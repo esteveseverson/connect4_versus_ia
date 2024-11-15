@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "connect4"
+version = "0.1.0"
+description = ""
+authors = ["Everson Esteves <esteveseverson@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pygame = "^2.6.1"
+
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.7.4"
+taskipy = "^1.14.0"
+
+[tool.ruff]
+line-length = 85
+
+[tool.ruff.lint]
+preview = true
+select = ['I', 'F', 'E', 'W', 'PL', 'PT']
+
+[tool.ruff.format]
+preview = true
+quote-style = 'single'
+
+[tool.taskipy.tasks]
+run = 'python connect4/main.py'
+format = 'ruff check . --fix && ruff format .'
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
