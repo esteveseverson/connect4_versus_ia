@@ -1,4 +1,6 @@
 import math
+import tkinter as tk
+from tkinter import messagebox, ttk
 
 
 class Connect4:
@@ -232,30 +234,153 @@ class Connect4:
 
     def turno_humano(self, coluna):
         if self.validar_movimento(coluna):
-            self.realizar_jogada(coluna, 1)
+            self.realizar_jogada(coluna, self.player_atual)
+            return True
+        return False
 
     def jogar(self):
-        while True:
-            self.desenhar_tabuleiro()
-            if self.player_atual == 1:
-                coluna = int(input(f'escolha a coluna (1-{self.colunas}): ')) - 1
-                if not self.validar_movimento(coluna):
-                    print('Movimento inválido! Realize outro.')
-                    continue
-                self.turno_humano(coluna)
-            else:
-                self.turno_ia()
+        if self.movimento_ganhador(1):
+            return 'Jogador ganhou!'
+        elif self.movimento_ganhador(-1):
+            return 'IA ganhou!'
+        return 'Jogo em andamento'
 
-            if self.movimento_ganhador(self.player_atual):
-                self.desenhar_tabuleiro()
-                vencedor = str(
-                    'O jogador ganhou' if self.player_atual == 1 else 'A I.A. venceu'
+
+class Connect4GUI:
+    def __init__(self, master):
+        self.master = master
+        self.master.title('Connect 4')
+        self.game = None
+        self.current_frame = None
+        self.ply = 4
+        self.usar_alpha_beta = False
+        self.init_menu()
+
+    def init_menu(self):
+        """Cria a tela inicial com configurações personalizadas."""
+        if self.current_frame:
+            self.current_frame.destroy()
+
+        self.current_frame = tk.Frame(self.master, bg="#f0f8ff")
+        self.current_frame.pack(fill="both", expand=True)
+
+        title_label = tk.Label(
+            self.current_frame,
+            text="🎮 Connect 4 🎲",
+            font=("Arial", 24, "bold"),
+            bg="#f0f8ff",
+            fg="#ff4500",
+        )
+        title_label.pack(pady=20)
+
+        ply_label = tk.Label(
+            self.current_frame,
+            text="Número de Ply:",
+            font=("Arial", 14),
+            bg="#f0f8ff",
+        )
+        ply_label.pack(pady=5)
+        self.ply_entry = ttk.Entry(
+            self.current_frame, justify="center", font=("Arial", 12)
+        )
+        self.ply_entry.insert(0, "4")  # Valor padrão
+        self.ply_entry.pack(pady=5)
+
+        alpha_beta_label = tk.Label(
+            self.current_frame,
+            text="Usar Poda Alfa-Beta?",
+            font=("Arial", 14),
+            bg="#f0f8ff",
+        )
+        alpha_beta_label.pack(pady=5)
+
+        self.alpha_beta_var = tk.BooleanVar(value=False)
+        alpha_beta_checkbox = ttk.Checkbutton(
+            self.current_frame,
+            text="Sim",
+            variable=self.alpha_beta_var,
+            onvalue=True,
+            offvalue=False,
+        )
+        alpha_beta_checkbox.pack(pady=5)
+
+        start_button = tk.Button(
+            self.current_frame,
+            text="Iniciar Jogo 🚀",
+            font=("Arial", 16),
+            bg="#32cd32",
+            fg="white",
+            command=self.start_game,
+        )
+        start_button.pack(pady=20)
+
+    def start_game(self):
+        """Inicia o jogo com as configurações escolhidas."""
+        try:
+            ply_value = int(self.ply_entry.get())
+            usar_alpha_beta = self.alpha_beta_var.get()
+
+            self.game = Connect4(ply=ply_value, usar_alpha_beta=usar_alpha_beta)
+            self.init_game_screen()
+        except ValueError:
+            messagebox.showerror("Erro", "O número de Ply deve ser um válido!")
+
+    def init_game_screen(self):
+        """Configura a interface do jogo com o tabuleiro e o botão 'Voltar'."""
+        if self.current_frame:
+            self.current_frame.destroy()
+
+        self.current_frame = tk.Frame(self.master)
+        self.current_frame.pack()
+
+        self.buttons = []
+        for i in range(self.game.linhas):
+            row = []
+            for j in range(self.game.colunas):
+                button = tk.Button(
+                    self.current_frame,
+                    text=' ',
+                    width=5,
+                    height=2,
+                    command=lambda col=j: self.player_move(col),
                 )
-                print(vencedor)
-                break
+                button.grid(row=i, column=j)
+                row.append(button)
+            self.buttons.append(row)
 
-            self.player_atual *= -1
+        # Botão "Voltar"
+        back_button = tk.Button(
+            self.current_frame, text='Voltar', command=self.init_menu
+        )
+        back_button.pack(pady=20)
+
+    def player_move(self, col):
+        if self.game.turno_humano(col):
+            self.update_board()
+            if self.game.movimento_ganhador(1):
+                messagebox.showinfo('Fim de Jogo', 'Jogador ganhou!')
+                self.init_menu()  # Retorna ao menu inicial após o fim do jogo
+            else:
+                self.game.turno_ia()
+                self.update_board()
+                if self.game.movimento_ganhador(-1):
+                    messagebox.showinfo('Fim de Jogo', 'IA ganhou!')
+                    self.init_menu()  # Retorna ao menu inicial após o fim do jogo
+
+    def update_board(self):
+        for i in range(self.game.linhas):
+            for j in range(self.game.colunas):
+                value = self.game.tabuleiro[i][j]
+                if value == 1:
+                    self.buttons[i][j].config(bg='yellow')
+                elif value == -1:
+                    self.buttons[i][j].config(bg='red')
+                else:
+                    self.buttons[i][j].config(bg='SystemButtonFace')
 
 
-game = Connect4(ply=4)
-game.jogar()
+if __name__ == '__main__':
+    root = tk.Tk()
+    root.geometry("600x400")  # Ajusta o tamanho da janela
+    app = Connect4GUI(root)
+    root.mainloop()
