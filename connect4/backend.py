@@ -154,6 +154,7 @@ class Connect4:
         return pontos
 
     def minimax(self, profundidade, alpha, beta, maximizar_jogador):
+        # Função Minimax com suporte a poda alfa-beta e Minimax puro.
         movimentos_validos = self.get_movimentos_validos()
         if profundidade == 0 or not movimentos_validos:
             return self.avaliar_tabuleiro(), None
@@ -164,51 +165,66 @@ class Connect4:
 
             for coluna in movimentos_validos:
                 self.realizar_jogada(coluna, 1)
-                eval = self.minimax(profundidade - 1, alpha, beta, False)[0]
+                if self.usar_alpha_beta:
+                    eval = self.minimax(profundidade - 1, alpha, beta, False)[0]
+                else:
+                    eval = self.minimax(profundidade - 1, None, None, False)[0]
                 self.retornar_movimento(coluna)
 
                 if eval > valor_maximo:
                     valor_maximo = eval
                     melhor_movimento = coluna
 
-                alpha = max(alpha, eval)
-                if self.usar_alpha_beta and beta <= alpha:
-                    break
+                if self.usar_alpha_beta:
+                    alpha = max(alpha, eval)
+                    if beta is not None and beta <= alpha:
+                        break
             return valor_maximo, melhor_movimento
 
-        if not maximizar_jogador:
+        else:
             valor_minimo = math.inf
             melhor_movimento = None
 
             for coluna in movimentos_validos:
                 self.realizar_jogada(coluna, -1)
-                eval = self.minimax(profundidade - 1, alpha, beta, True)[0]
+                if self.usar_alpha_beta:
+                    eval = self.minimax(profundidade - 1, alpha, beta, True)[0]
+                else:
+                    eval = self.minimax(profundidade - 1, None, None, True)[0]
                 self.retornar_movimento(coluna)
 
                 if eval < valor_minimo:
                     valor_minimo = eval
                     melhor_movimento = coluna
-                beta = min(beta, eval)
 
-                if self.usar_alpha_beta and beta <= alpha:
-                    break
-
+                if self.usar_alpha_beta:
+                    beta = min(beta, eval)
+                    if beta is not None and beta <= alpha:
+                        break
             return valor_minimo, melhor_movimento
 
     def turno_ia(self):
         movimentos_validos = self.get_movimentos_validos()
 
-        # Prioridade: bloquear vitória do jogador
+        # Prioridade 1: vitória da IA
+        for coluna in movimentos_validos:
+            self.realizar_jogada(coluna, -1)
+            if self.movimento_ganhador(-1):
+                self.retornar_movimento(coluna)
+                self.realizar_jogada(coluna, -1)
+                return
+            self.retornar_movimento(coluna)
+
+        # Prioridade 2: bloquear vitória do jogador
         for coluna in movimentos_validos:
             self.realizar_jogada(coluna, 1)
             if self.movimento_ganhador(1):
                 self.retornar_movimento(coluna)
                 self.realizar_jogada(coluna, -1)
                 return
-
             self.retornar_movimento(coluna)
 
-        # Prioriodade secundária: Bloquear ameaças críticas
+        # Prioriodade 3: bloquear ameaças críticas
         maior_ameaca = None
         melhor_pontuacao = -math.inf
 
@@ -225,8 +241,10 @@ class Connect4:
             self.realizar_jogada(maior_ameaca, -1)
             return
 
-        # Caso contrário, faça o melhor movimento da IA
-        _, melhor_movimento = self.minimax(self.ply, -math.inf, math.inf, True)
+        # Prioridade 4: melhor jogada com melhor pontuação
+        _, melhor_movimento = self.minimax(
+            self.ply, -math.inf, math.inf, True
+        ) if self.usar_alpha_beta else self.minimax(self.ply, None, None, True)
         if melhor_movimento is not None:
             self.realizar_jogada(melhor_movimento, -1)
 
@@ -257,5 +275,5 @@ class Connect4:
             self.player_atual *= -1
 
 
-game = Connect4(ply=4)
+game = Connect4(ply=7, usar_alpha_beta=False)
 game.jogar()
