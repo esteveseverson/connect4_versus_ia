@@ -1,78 +1,70 @@
 import math
-import tkinter as tk
-from tkinter import messagebox, ttk
+import random
+import sys
+from threading import Timer
+
+import numpy as np
+import pygame
+
+# Constantes
+LINHAS = 6
+COLUNAS = 7
+
+TURNO_JOGADOR = 0
+TURNO_IA = 1
+
+PECA_JOGADOR = 1
+PECA_IA = 2
+
+AZUL = (0, 0, 255)
+PRETO = (0, 0, 0)
+VERMELHO = (255, 0, 0)
+AMARELO = (255, 255, 0)
 
 
-class Connect4:
-    def __init__(
-        self,
-        linhas: int = 7,
-        colunas: int = 8,
-        ply: int = 4,
-        usar_alpha_beta: bool = False,
-    ):
-        self.linhas = linhas
-        self.colunas = colunas
-        self.tabuleiro = [[0 for _ in range(colunas)] for _ in range(linhas)]
-        self.ply = ply
-        self.usar_alpha_beta = usar_alpha_beta
-        self.player_atual = 1  # 1 para jogador, -1 para IA
+class Tabuleiro:
+    def __init__(self):
+        self.tabuleiro = np.zeros((LINHAS, COLUNAS))
 
-    def desenhar_tabuleiro(self):
-        for linha in self.tabuleiro:
-            print('  '.join(map(str, linha)))
-        print('\n')
+    def soltar_peca(self, linha, coluna, peca):
+        self.tabuleiro[linha][coluna] = peca
 
-    def validar_movimento(self, coluna) -> bool:
+    def validar_movimento(self, coluna):
         return self.tabuleiro[0][coluna] == 0
 
-    def get_movimentos_validos(self) -> list[int]:
-        return [
-            coluna
-            for coluna in range(self.colunas)
-            if self.validar_movimento(coluna)
-        ]
-
-    def realizar_jogada(self, coluna, player):
-        for linha in reversed(self.tabuleiro):
-            if linha[coluna] == 0:
-                linha[coluna] = player
-                return
-
-    def retornar_movimento(self, coluna):
-        for linha in self.tabuleiro:
-            if linha[coluna] != 0:
-                linha[coluna] = 0
-                return
+    def obter_proxima_linha(self, coluna):
+        for linha in range(LINHAS - 1, -1, -1):
+            if self.tabuleiro[linha][coluna] == 0:
+                return linha
 
     def movimento_ganhador(self, player) -> bool:
         # Verificar horizontal
-        for linha in range(self.linhas):
-            for coluna in range(self.colunas - 3):
+        for linha in range(LINHAS):
+            for coluna in range(COLUNAS - 3):
                 if all(
                     self.tabuleiro[linha][coluna + i] == player for i in range(4)
                 ):
                     return True
 
         # Verificar vertical
-        for linha in range(self.linhas - 3):
-            for coluna in range(self.colunas):
+        for linha in range(LINHAS - 3):
+            for coluna in range(COLUNAS):
                 if all(
                     self.tabuleiro[linha + i][coluna] == player for i in range(4)
                 ):
                     return True
 
         # Verificar diagonal principal \
-        for linha in range(self.linhas - 3):
-            for coluna in range(self.colunas - 3):
+        for linha in range(LINHAS - 3):
+            for coluna in range(COLUNAS - 3):
                 if all(
                     self.tabuleiro[linha + i][coluna + i] == player for i in range(4)
                 ):
                     return True
 
         # Verificar diagonal secundaria /
-        for linha in range(3, self.linhas):
-            for coluna in range(self.colunas - 3):
+        for linha in range(3, LINHAS):
+            for coluna in range(COLUNAS - 3):
                 if all(
                     self.tabuleiro[linha - i][coluna + i] == player for i in range(4)
                 ):
@@ -80,330 +72,237 @@ class Connect4:
 
         return False
 
-    @staticmethod
-    def avaliar_janela(janela: list[int]) -> int | float:
-        JOGADA_GANHADORA = 4
-        CELULAS_LIVRES = 1
-
-        pontos = 0
-        ia = -1
-        jogador = 1
-
-        # Casos de vitória
-        if janela.count(ia) == JOGADA_GANHADORA:
-            return math.inf
-
-        if janela.count(jogador) == JOGADA_GANHADORA:
-            return -math.inf
-
-        # Casos de 3 alinhados
-        if janela.count(jogador) == (
-            JOGADA_GANHADORA - 1 and janela.count(0) == CELULAS_LIVRES
-        ):
-            pontos -= 1000
-
-        if janela.count(ia) == (
-            JOGADA_GANHADORA - 1 and janela.count(0) == CELULAS_LIVRES
-        ):
-            pontos += 500
-
-        # Casos de 2 alinhados
-        if janela.count(ia) == (
-            JOGADA_GANHADORA - 2 and janela.count(0) >= CELULAS_LIVRES + 1
-        ):
-            pontos += 50
-
-        if janela.count(jogador) == (
-            JOGADA_GANHADORA - 2 and janela.count(0) >= CELULAS_LIVRES + 1
-        ):
-            pontos -= 200
-
-        return pontos
-
-    def avaliar_tabuleiro(self) -> int:
-        pontos = 0
-
-        coluna_central = self.colunas // 2
-        centro = [
-            self.tabuleiro[linha][coluna_central] for linha in range(self.linhas)
+    def get_movimentos_validos(self):
+        return [
+            coluna for coluna in range(COLUNAS) if self.validar_movimento(coluna)
         ]
-        pontos += centro.count(-1) * 5
 
-        # avaliando linhas
-        for linha in range(self.linhas):
-            for coluna in range(self.colunas - 3):
-                janela = [self.tabuleiro[linha][coluna + i] for i in range(4)]
-                pontos += self.avaliar_janela(janela)
 
-        # avaliando colunas
-        for coluna in range(self.colunas):
-            for linha in range(self.linhas - 3):
-                janela = [self.tabuleiro[linha + i][coluna] for i in range(4)]
-                pontos += self.avaliar_janela(janela)
+class IA:
+    def __init__(self, profundidade=4, usar_poda=False):
+        self.profundidade = profundidade
+        self.usar_poda = usar_poda
 
-        # avaliando as diagonais \
-        for linha in range(self.linhas - 3):
-            for coluna in range(self.colunas - 3):
-                janela = [self.tabuleiro[linha + i][coluna + i] for i in range(4)]
-                pontos += self.avaliar_janela(janela)
+    @staticmethod
+    def avaliar_janela(janela, peca):
+        peca_oponente = PECA_JOGADOR if peca == PECA_IA else PECA_IA
+        pontuacao = 0
+        if janela.count(peca) == 4:
+            pontuacao += 100
+        elif janela.count(peca) == 3 and janela.count(0) == 1:
+            pontuacao += 5
+        elif janela.count(peca) == 2 and janela.count(0) == 2:
+            pontuacao += 2
 
-        # avaliando as diagonais /
-        for linha in range(3, self.linhas):
-            for coluna in range(self.colunas - 3):
-                janela = [self.tabuleiro[linha - i][coluna + i] for i in range(4)]
-                pontos += self.avaliar_janela(janela)
+        if janela.count(peca_oponente) == 3 and janela.count(0) == 1:
+            pontuacao -= 4
 
-        return pontos
+        return pontuacao
 
-    def minimax(self, profundidade, alpha, beta, maximizar_jogador):
+    def avaliar_tabuleiro(self, tabuleiro, peca):
+        pontuacao = 0
+        # Coluna central
+        coluna_central = [int(i) for i in list(tabuleiro[:, COLUNAS // 2])]
+        pontuacao += coluna_central.count(peca) * 6
 
-        # Função Minimax com suporte a poda alfa-beta e Minimax puro.
-        movimentos_validos = self.get_movimentos_validos()
-        if profundidade == 0 or not movimentos_validos:
-            return self.avaliar_tabuleiro(), None
+        # Linhas
+        for r in range(LINHAS):
+            linha_array = [int(i) for i in list(tabuleiro[r, :])]
+            for c in range(COLUNAS - 3):
+                janela = linha_array[c : c + 4]
+                pontuacao += self.avaliar_janela(janela, peca)
 
-        if maximizar_jogador:
-            valor_maximo = -math.inf
-            melhor_movimento = None
+        # Colunas
+        for c in range(COLUNAS):
+            coluna_array = [int(i) for i in list(tabuleiro[:, c])]
+            for r in range(LINHAS - 3):
+                janela = coluna_array[r : r + 4]
+                pontuacao += self.avaliar_janela(janela, peca)
 
-            for coluna in movimentos_validos:
-                self.realizar_jogada(coluna, 1)
-                if self.usar_alpha_beta:
-                    eval = self.minimax(profundidade - 1, alpha, beta, False)[0]
+        # Diagonais positivas
+        for r in range(3, LINHAS):
+            for c in range(COLUNAS - 3):
+                janela = [tabuleiro[r - i][c + i] for i in range(4)]
+                pontuacao += self.avaliar_janela(janela, peca)
+
+        # Diagonais negativas
+        for r in range(3, LINHAS):
+            for c in range(3, COLUNAS):
+                janela = [tabuleiro[r - i][c - i] for i in range(4)]
+                pontuacao += self.avaliar_janela(janela, peca)
+
+        return pontuacao
+
+    def minimax(self, tabuleiro_obj, profundidade, alfa, beta, jogador_maximizador):
+        locais_validos = tabuleiro_obj.get_movimentos_validos()
+        terminal = (
+            tabuleiro_obj.movimento_ganhador(PECA_JOGADOR)
+            or tabuleiro_obj.movimento_ganhador(PECA_IA)
+            or not locais_validos
+        )
+
+        if profundidade == 0 or terminal:
+            if terminal:
+                if tabuleiro_obj.movimento_ganhador(PECA_IA):
+                    return None, 10000000
+                elif tabuleiro_obj.movimento_ganhador(PECA_JOGADOR):
+                    return None, -10000000
                 else:
-                    eval = self.minimax(profundidade - 1, None, None, False)[0]
-                self.retornar_movimento(coluna)
-
-                if eval > valor_maximo:
-                    valor_maximo = eval
-                    melhor_movimento = coluna
-
-                if self.usar_alpha_beta:
-                    alpha = max(alpha, eval)
-                    if beta is not None and beta <= alpha:
-                        break
-
-            return valor_maximo, melhor_movimento
-
-        else:
-            valor_minimo = math.inf
-            melhor_movimento = None
-
-            for coluna in movimentos_validos:
-                self.realizar_jogada(coluna, -1)
-                if self.usar_alpha_beta:
-                    eval = self.minimax(profundidade - 1, alpha, beta, True)[0]
-                else:
-                    eval = self.minimax(profundidade - 1, None, None, True)[0]
-                self.retornar_movimento(coluna)
-
-                if eval < valor_minimo:
-                    valor_minimo = eval
-                    melhor_movimento = coluna
-
-                if self.usar_alpha_beta:
-                    beta = min(beta, eval)
-                    if beta is not None and beta <= alpha:
-                        break
-
-            return valor_minimo, melhor_movimento
-
-    def turno_ia(self):
-        movimentos_validos = self.get_movimentos_validos()
-
-        # Prioridade 1: vitória da IA
-        for coluna in movimentos_validos:
-            self.realizar_jogada(coluna, -1)
-            if self.movimento_ganhador(-1):
-                self.retornar_movimento(coluna)
-                self.realizar_jogada(coluna, -1)
-                return
-            self.retornar_movimento(coluna)
-
-        # Prioridade 2: bloquear vitória do jogador
-        for coluna in movimentos_validos:
-            self.realizar_jogada(coluna, 1)
-            if self.movimento_ganhador(1):
-                self.retornar_movimento(coluna)
-                self.realizar_jogada(coluna, -1)
-                return
-            self.retornar_movimento(coluna)
-
-        # Prioriodade 3: bloquear ameaças críticas
-        maior_ameaca = None
-        melhor_pontuacao = -math.inf
-
-        for coluna in movimentos_validos:
-            self.realizar_jogada(coluna, -1)
-            pontuacao_atual = self.avaliar_tabuleiro()
-            self.retornar_movimento(coluna)
-
-            if pontuacao_atual > melhor_pontuacao:
-                melhor_pontuacao = pontuacao_atual
-                maior_ameaca = coluna
-
-        if maior_ameaca is not None:
-            self.realizar_jogada(maior_ameaca, -1)
-            return
-
-        # Prioridade 4: melhor jogada com melhor pontuação
-        _, melhor_movimento = self.minimax(
-            self.ply, -math.inf, math.inf, True
-        ) if self.usar_alpha_beta else self.minimax(self.ply, None, None, True)
-        if melhor_movimento is not None:
-            self.realizar_jogada(melhor_movimento, -1)
-
-    def turno_humano(self, coluna):
-        if self.validar_movimento(coluna):
-            self.realizar_jogada(coluna, self.player_atual)
-            return True
-        return False
-
-    def jogar(self):
-        if self.movimento_ganhador(1):
-            return 'Jogador ganhou!'
-        elif self.movimento_ganhador(-1):
-            return 'IA ganhou!'
-        return 'Jogo em andamento'
-
-
-class Connect4GUI:
-    def __init__(self, master):
-        self.master = master
-        self.master.title('Connect 4')
-        self.game = None
-        self.current_frame = None
-        self.ply = 4
-        self.usar_alpha_beta = False
-        self.init_menu()
-
-    def init_menu(self):
-        """Cria a tela inicial com configurações personalizadas."""
-        if self.current_frame:
-            self.current_frame.destroy()
-
-        self.current_frame = tk.Frame(self.master, bg="#f0f8ff")
-        self.current_frame.pack(fill="both", expand=True)
-
-        title_label = tk.Label(
-            self.current_frame,
-            text="🎮 Connect 4 🎲",
-            font=("Arial", 24, "bold"),
-            bg="#f0f8ff",
-            fg="#ff4500",
-        )
-        title_label.pack(pady=20)
-
-        ply_label = tk.Label(
-            self.current_frame,
-            text="Número de Ply:",
-            font=("Arial", 14),
-            bg="#f0f8ff",
-        )
-        ply_label.pack(pady=5)
-        self.ply_entry = ttk.Entry(
-            self.current_frame, justify="center", font=("Arial", 12)
-        )
-        self.ply_entry.insert(0, "4")  # Valor padrão
-        self.ply_entry.pack(pady=5)
-
-        alpha_beta_label = tk.Label(
-            self.current_frame,
-            text="Usar Poda Alfa-Beta?",
-            font=("Arial", 14),
-            bg="#f0f8ff",
-        )
-        alpha_beta_label.pack(pady=5)
-
-        self.alpha_beta_var = tk.BooleanVar(value=False)
-        alpha_beta_checkbox = ttk.Checkbutton(
-            self.current_frame,
-            text="Sim",
-            variable=self.alpha_beta_var,
-            onvalue=True,
-            offvalue=False,
-        )
-        alpha_beta_checkbox.pack(pady=5)
-
-        start_button = tk.Button(
-            self.current_frame,
-            text="Iniciar Jogo 🚀",
-            font=("Arial", 16),
-            bg="#32cd32",
-            fg="white",
-            command=self.start_game,
-        )
-        start_button.pack(pady=20)
-
-    def start_game(self):
-        """Inicia o jogo com as configurações escolhidas."""
-        try:
-            ply_value = int(self.ply_entry.get())
-            usar_alpha_beta = self.alpha_beta_var.get()
-
-            print('\n', usar_alpha_beta, ply_value, '\n')
-
-            self.game = Connect4(ply=ply_value, usar_alpha_beta=usar_alpha_beta)
-            self.init_game_screen()
-        except ValueError:
-            messagebox.showerror("Erro", "O número de Ply deve ser um válido!")
-
-    def init_game_screen(self):
-        """Configura a interface do jogo com o tabuleiro e o botão 'Voltar'."""
-        if self.current_frame:
-            self.current_frame.destroy()
-
-        self.current_frame = tk.Frame(self.master)
-        self.current_frame.pack()
-
-        self.buttons = []
-        for i in range(self.game.linhas):
-            row = []
-            for j in range(self.game.colunas):
-                button = tk.Button(
-                    self.current_frame,
-                    text=' ',
-                    width=5,
-                    height=2,
-                    command=lambda col=j: self.player_move(col),
-                )
-                button.grid(row=i, column=j)
-                row.append(button)
-            self.buttons.append(row)
-
-        # Botão "Voltar"
-        back_button = tk.Button(
-            self.current_frame, text='Voltar', command=self.init_menu
-        )
-        back_button.pack(pady=20)
-
-    def player_move(self, col):
-        if self.game.turno_humano(col):
-            self.update_board()
-            if self.game.movimento_ganhador(1):
-                messagebox.showinfo('Fim de Jogo', 'Jogador ganhou!')
-                self.init_menu()  # Retorna ao menu inicial após o fim do jogo
+                    return None, 0
             else:
-                self.game.turno_ia()
-                self.update_board()
-                if self.game.movimento_ganhador(-1):
-                    messagebox.showinfo('Fim de Jogo', 'IA ganhou!')
-                    self.init_menu()  # Retorna ao menu inicial após o fim do jogo
+                return None, self.avaliar_tabuleiro(tabuleiro_obj.tabuleiro, PECA_IA)
 
-    def update_board(self):
-        for i in range(self.game.linhas):
-            for j in range(self.game.colunas):
-                value = self.game.tabuleiro[i][j]
-                if value == 1:
-                    self.buttons[i][j].config(bg='yellow')
-                elif value == -1:
-                    self.buttons[i][j].config(bg='red')
-                else:
-                    self.buttons[i][j].config(bg='SystemButtonFace')
+        if jogador_maximizador:
+            valor = -math.inf
+            coluna = random.choice(locais_validos)
+            for col in locais_validos:
+                linha = tabuleiro_obj.obter_proxima_linha(col)
+                copia_tabuleiro = Tabuleiro()
+                copia_tabuleiro.tabuleiro = np.copy(tabuleiro_obj.tabuleiro)
+                copia_tabuleiro.soltar_peca(linha, col, PECA_IA)
+                novo_valor = self.minimax(
+                    copia_tabuleiro, profundidade - 1, alfa, beta, False
+                )[1]
+                if novo_valor > valor:
+                    valor = novo_valor
+                    coluna = col
+                if self.usar_poda:
+                    alfa = max(alfa, valor)
+                    if alfa >= beta:
+                        break
+            return coluna, valor
+        else:
+            valor = math.inf
+            coluna = random.choice(locais_validos)
+            for col in locais_validos:
+                linha = tabuleiro_obj.obter_proxima_linha(col)
+                copia_tabuleiro = Tabuleiro()
+                copia_tabuleiro.tabuleiro = np.copy(tabuleiro_obj.tabuleiro)
+                copia_tabuleiro.soltar_peca(linha, col, PECA_JOGADOR)
+                novo_valor = self.minimax(
+                    copia_tabuleiro, profundidade - 1, alfa, beta, True
+                )[1]
+                if novo_valor < valor:
+                    valor = novo_valor
+                    coluna = col
+                if self.usar_poda:
+                    beta = min(beta, valor)
+                    if alfa >= beta:
+                        break
+            return coluna, valor
+
+
+class Jogo:
+    def __init__(self):
+        self.tabuleiro = Tabuleiro()
+        self.ia = IA(profundidade=4, usar_poda=False)
+        self.jogo_acabou = False
+        self.em_andamento = True
+        self.turno = random.randint(TURNO_JOGADOR, TURNO_IA)
+
+        pygame.init()
+        self.TAMANHO_QUADRADO = 100
+        self.largura = COLUNAS * self.TAMANHO_QUADRADO
+        self.altura = (LINHAS + 1) * self.TAMANHO_QUADRADO
+        self.raio_circulo = int(self.TAMANHO_QUADRADO / 2 - 5)
+        self.tela = pygame.display.set_mode((self.largura, self.altura))
+        self.fonte = pygame.font.SysFont('monospace', 75)
+        self.desenhar_tabuleiro()
+
+    def desenhar_tabuleiro(self):
+        for c in range(COLUNAS):
+            for r in range(LINHAS):
+                pygame.draw.rect(
+                    self.tela,
+                    AZUL,
+                    (
+                        c * self.TAMANHO_QUADRADO,
+                        r * self.TAMANHO_QUADRADO + self.TAMANHO_QUADRADO,
+                        self.TAMANHO_QUADRADO,
+                        self.TAMANHO_QUADRADO,
+                    ),
+                )
+                cor = PRETO
+                if self.tabuleiro.tabuleiro[r][c] == PECA_JOGADOR:
+                    cor = VERMELHO
+                elif self.tabuleiro.tabuleiro[r][c] == PECA_IA:
+                    cor = AMARELO
+                pygame.draw.circle(
+                    self.tela,
+                    cor,
+                    (
+                        int(c * self.TAMANHO_QUADRADO + self.TAMANHO_QUADRADO / 2),
+                        int(
+                            r * self.TAMANHO_QUADRADO
+                            + self.TAMANHO_QUADRADO
+                            + self.TAMANHO_QUADRADO / 2
+                        ),
+                    ),
+                    self.raio_circulo,
+                )
+        pygame.display.update()
+
+    def terminar_jogo(self):
+        self.jogo_acabou = True
+        print('Jogo terminado!')
+
+    def loop(self):
+        while not self.jogo_acabou:
+            for evento in pygame.event.get():
+                if evento.type == pygame.QUIT:
+                    sys.exit()
+                if evento.type == pygame.MOUSEMOTION and self.em_andamento:
+                    pygame.draw.rect(
+                        self.tela, PRETO, (0, 0, self.largura, self.TAMANHO_QUADRADO)
+                    )
+                    xpos = pygame.mouse.get_pos()[0]
+                    if self.turno == TURNO_JOGADOR:
+                        pygame.draw.circle(
+                            self.tela,
+                            VERMELHO,
+                            (xpos, int(self.TAMANHO_QUADRADO / 2)),
+                            self.raio_circulo,
+                        )
+
+                if evento.type == pygame.MOUSEBUTTONDOWN and self.em_andamento:
+                    pygame.draw.rect(
+                        self.tela, PRETO, (0, 0, self.largura, self.TAMANHO_QUADRADO)
+                    )
+                    if self.turno == TURNO_JOGADOR:
+                        xpos = evento.pos[0]
+                        coluna = int(math.floor(xpos / self.TAMANHO_QUADRADO))
+                        if self.tabuleiro.validar_movimento(coluna):
+                            linha = self.tabuleiro.obter_proxima_linha(coluna)
+                            self.tabuleiro.soltar_peca(linha, coluna, PECA_JOGADOR)
+                            if self.tabuleiro.movimento_ganhador(PECA_JOGADOR):
+                                print('JOGADOR VENCEU')
+                                mensagem = self.fonte.render(
+                                    'JOGADOR VENCEU', 1, VERMELHO
+                                )
+                                self.tela.blit(mensagem, (40, 10))
+                                self.em_andamento = False
+                                Timer(3.0, self.terminar_jogo).start()
+                        self.desenhar_tabuleiro()
+                        self.turno = (self.turno + 1) % 2
+
+            if self.turno == TURNO_IA and not self.jogo_acabou and self.em_andamento:
+                coluna, _ = self.ia.minimax(
+                    self.tabuleiro, self.ia.profundidade, -math.inf, math.inf, True
+                )
+                if self.tabuleiro.validar_movimento(coluna):
+                    pygame.time.wait(500)
+                    linha = self.tabuleiro.obter_proxima_linha(coluna)
+                    self.tabuleiro.soltar_peca(linha, coluna, PECA_IA)
+                    if self.tabuleiro.movimento_ganhador(PECA_IA):
+                        print('IA VENCEU!')
+                        mensagem = self.fonte.render('IA VENCEU!', 1, AMARELO)
+                        self.tela.blit(mensagem, (40, 10))
+                        self.em_andamento = False
+                        Timer(3.0, self.terminar_jogo).start()
+                self.desenhar_tabuleiro()
+                self.turno = (self.turno + 1) % 2
 
 
 if __name__ == '__main__':
-    root = tk.Tk()
-    root.geometry("600x400")  # Ajusta o tamanho da janela
-    app = Connect4GUI(root)
-    root.mainloop()
+    jogo = Jogo()
+    jogo.loop()
